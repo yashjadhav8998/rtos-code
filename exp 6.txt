@@ -1,0 +1,175 @@
+#include <includes.h>
+#include "func.h"
+
+/********** Define Task Priorities ***********/
+#define  APP_TASK_START_PRIO             4
+#define  APP_TASK0_PRIO                        5
+#define  APP_TASK1_PRIO                        6
+#define  APP_TASK2_PRIO                        7
+
+/*--------------- APPLICATION STACKS ---------*/
+static OS_STK AppTaskStartStk[APP_TASK_STK_SIZE];
+static OS_STK AppTask0stk[APP_TASK_STK_SIZE];
+static OS_STK AppTask1stk[APP_TASK_STK_SIZE];
+static OS_STK AppTask2stk[APP_TASK_STK_SIZE];
+
+/*-------------LOCAL FUNCTION PROTOTYPES--------------*/
+
+/*--------------- PARENT TASK (MAIN TASK) ---------*/
+static void AppTaskStart(void *p_arg);
+static void AppTaskCreate(void);
+
+/*--------------- CHILDREN TASKS --------------*/
+static void AppTask0(void *p_arg);
+static void AppTask1(void *p_arg);
+static void AppTask2(void *p_arg);
+
+OS_EVENT *Sem; /* Semaphore  */
+
+/* Hooks definitions */
+void App_TCBInitHook(OS_TCB *ptcb) {
+    (void)ptcb; /* Unused parameter */
+    /* Your implementation here */
+}
+
+void App_TaskCreateHook(OS_TCB *ptcb) {
+    (void)ptcb; /* Unused parameter */
+    /* Your implementation here */
+}
+
+void App_TaskDelHook(OS_TCB *ptcb) {
+    (void)ptcb; /* Unused parameter */
+    /* Your implementation here */
+}
+
+void App_TaskIdleHook(void) {
+    /* Your implementation here */
+}
+
+void App_TaskStatHook(void) {
+    /* Your implementation here */
+}
+
+void App_TaskSwHook(void) {
+    /* Your implementation here */
+}
+
+int main(void)
+{
+    BSP_IntDisAll(); /* Disable all interrupts until we are ready to accept them */
+    OSInit();        /* Initialize "uC/OS-II, The Real-Time Kernel" */
+    OSTaskCreate(AppTaskStart,
+                 (void *)0,
+                 (OS_STK *)&AppTaskStartStk[APP_TASK_STK_SIZE - 1],
+                 APP_TASK_START_PRIO);
+    OSStart(); /* Start multitasking (i.e. give control to uC/OS-II) */
+}
+
+/************************************************************************************
+*                                          AppTaskStart()
+************************************************************************************/
+
+static void AppTaskStart(void *p_arg)
+{
+    p_arg = p_arg; /* Just to avoid compiler Warning */
+
+    BSP_Init(); /* Initialize BSP functions */
+    InitLCD();  /* Initialize LCD */
+    kbdInit();  /* Initialize Keyboard */
+    ADCInit();  /* Initialize ADC */
+    LEDInit();  /* Initialize LED */
+    UartInit(9600); /* Initialise the UART */
+
+    Sem = OSSemCreate(0); /* Create a Semaphore */
+
+    AppTaskCreate(); /* Create application tasks (child tasks) */
+
+    while (DEF_TRUE)
+    {
+        printf("\r\nMAIN TASK: Created 2 Tasks and Semaphore. Now going to deep sleep...");
+        printf("\r\n====================================================================\r\n");
+        OSTimeDlyHMSM(1, 0, 0, 0);
+    }
+}
+
+/* ************************************************************************************
+*                                      AppTaskCreate()
+**************************************************************************************/
+
+static void AppTaskCreate(void)
+{
+    OSTaskCreate(AppTask0, /* Name of Task */
+                 (void *)0, /* Pointer to arguments for task execution */
+                 (OS_STK *)&AppTask0stk[APP_TASK_STK_SIZE - 1], /* Pointer to top-of-stack of the assigned stack */
+                 APP_TASK0_PRIO); /* Task priority */
+
+    OSTaskCreate(AppTask1, /* Name of Task */
+                 (void *)0, /* Pointer to arguments for task execution */
+                 (OS_STK *)&AppTask1stk[APP_TASK_STK_SIZE - 1], /* Pointer to top-of-stack of the assigned stack */
+                 APP_TASK1_PRIO); /* Task priority */
+}
+
+/************************************************************************************
+*                                    TASK-0 : AppTask0()
+************************************************************************************/
+
+static void AppTask0(void *p_arg)
+{
+    unsigned char err, *msg;
+
+    p_arg = p_arg; /* Just to avoid compiler Warning */
+
+    while (DEF_TRUE)
+    {
+        /* User Code Here */
+        do
+        {
+            printf("TASK0: Hello Pccoe\n\r");
+            OSTimeDlyHMSM(0, 0, 2, 0);
+        } while (!(GetKey()));
+        OSSemPost(Sem); /* Signal Semaphore */
+        OSTimeDlyHMSM(0, 0, 0, 200);
+        do
+        {
+            printf("TASK0: Waiting for Semaphore signal\n\r");
+            OSSemPend(Sem, 200, &err);
+        } while (err != OS_NO_ERR); /* Wait on Semaphore */
+        printf("TASK0: Semaphore Acquired.... TASK0 will now perform operations....\n\r");
+        msg = "Hello PCCOE";
+        LCD_cmd(0x01);
+        LCD_display(1, 1, msg);
+        OSTimeDlyHMSM(0, 0, 1, 0);
+    }
+}
+
+/************************************************************************************
+*                                    TASK-1 : AppTask1()
+************************************************************************************/
+
+static void AppTask1(void *p_arg)
+{
+    unsigned char err, *msg1;
+    p_arg = p_arg; /* Just to avoid compiler Warning */
+
+    while (DEF_TRUE)
+    {
+        /* User Code Here */
+        do
+        {
+            printf("TASK1: Waiting for Semaphore signal\n\r");
+            OSSemPend(Sem, 200, &err); /* Wait on Semaphore */
+        } while (err != OS_NO_ERR);
+        printf("TASK1: Semaphore Acquired.... TASK1 will now perform operations....\n\r");
+        msg1 = "NAMASTE INDIA";
+        LCD_cmd(0x01);
+        LCD_display(1, 1, msg1);
+        OSTimeDlyHMSM(0, 0, 1, 0);
+        do
+        {
+            OSTimeDlyHMSM(0, 0, 2, 0);
+            printf("TASK1: Press any key on Keypad to release Semaphore\n\r");
+        } while (!(GetKey()));
+        OSSemPost(Sem); /* Signal Semaphore */
+        OSTimeDlyHMSM(0, 0, 0, 200);
+    }
+}
